@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>聲光探險隊：笑臉雨集能儀</title>
+  <style>
+    :root { 
+      --primary: #ff6b6b; 
+      --secondary: #4ecdc4; 
+      --bg: #eef2f3; 
+    }
+    body {
+      font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      background: var(--bg);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0; overflow: hidden; touch-action: manipulation;
+    }
+    h1 { color: var(--primary); text-shadow: 2px 2px #fff; margin: 10px 0; font-size: 1.8rem; }
+    
+    /* 畫布容器 */
+    .canvas-box {
+      background: #fff; border: 4px solid var(--secondary); border-radius: 20px;
+      padding: 5px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); position: relative;
+    }
+    canvas { width: 85vw; max-width: 500px; height: 350px; display: block; background: #fff; border-radius: 15px; }
+
+    /* 進度條 */
+    .progress-container {
+      width: 80vw; max-width: 500px; height: 30px;
+      background: #ddd; border-radius: 20px; margin: 20px 0;
+      border: 3px solid #333; overflow: hidden; position: relative;
+    }
+    #progressBar {
+      width: 0%; height: 100%;
+      background: linear-gradient(90deg, #ff9a9e, #fecfef, var(--secondary));
+      transition: width 0.15s linear;
+    }
+
+    button {
+      background: var(--primary); color: white; border: none;
+      padding: 15px 40px; font-size: 1.3rem; border-radius: 50px;
+      cursor: pointer; box-shadow: 0 5px #ee5253; font-weight: bold;
+    }
+    button:active { transform: translateY(3px); box-shadow: 0 2px #ee5253; }
+    
+    #statusMsg { font-size: 1.1rem; font-weight: bold; margin-top: 10px; color: #555; height: 1.5em; }
+
+    /* 過關成功 */
+    #successOverlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(255,255,255,0.96); z-index: 100;
+      flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    }
+    .big-emoji { font-size: 5rem; animation: bounce 1s infinite; }
+    @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.2); } }
+  </style>
+</head>
+<body>
+
+  <h1>🚀 聲光探險隊：笑臉雨集能儀</h1>
+  
+  <div class="canvas-box">
+    <canvas id="particleCanvas"></canvas>
+  </div>
+
+  <div class="progress-container">
+    <div id="progressBar"></div>
+  </div>
+  
+  <p id="statusMsg">點擊按鈕，用笑聲喚醒笑臉雨！</p>
+  <button id="startBtn">啟動集能儀</button>
+
+  <div id="successOverlay">
+    <div class="big-emoji">🎉</div>
+    <h2 style="color:var(--primary); font-size: 2.5rem;">能量收集成功！</h2>
+    <p style="font-size:1.3rem">快樂能量已爆表！兒童節快樂！</p>
+    <button onclick="location.reload()">再次挑戰</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('particleCanvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const progressBar = document.getElementById('progressBar');
+    const statusMsg = document.getElementById('statusMsg');
+    const successOverlay = document.getElementById('successOverlay');
+
+    let audioCtx, analyser, dataArray, animationId;
+    let energy = 0;
+    let particles = [];
+    const targetEnergy = 100;
+    const emojis = ["😊", "😆", "🤣", "✨", "🎈", "🍭"];
+
+    // 畫布尺寸初始化
+    function resize() {
+      canvas.width = canvas.clientWidth * window.devicePixelRatio;
+      canvas.height = canvas.clientHeight * window.devicePixelRatio;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+        analyser = audioCtx.createAnalyser();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser.fftSize = 256;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        source.connect(analyser);
+
+        startBtn.style.display = 'none';
+        statusMsg.innerText = "大聲笑出來，收集笑臉碎片！";
+        update();
+      } catch (err) {
+        statusMsg.innerHTML = "<span style='color:red'>錯誤：請允許麥克風權限</span>";
+      }
+    });
+
+    // 粒子類別：控制每個笑臉的行為
+    class Particle {
+      constructor(maxAmp) {
+        this.x = Math.random() * canvas.width;
+        this.y = canvas.height + 50; // 從下方出現
+        this.size = 20 + Math.random() * 40; // 隨機大小
+        this.speedY = 3 + Math.random() * 7 + (maxAmp / 10); // 聲音越大飛越快
+        this.speedX = (Math.random() - 0.5) * 4; // 左右隨機飄移
+        this.emoji = emojis[Math.floor(Math.random() * emojis.length)];
+        this.opacity = 1;
+      }
+      update() {
+        this.y -= this.speedY;
+        this.x += this.speedX;
+        this.opacity -= 0.005; // 慢慢消失
+      }
+      draw() {
+        ctx.globalAlpha = this.opacity;
+        ctx.font = `${this.size}px Arial`;
+        ctx.textAlign = "center";
+        ctx.fillText(this.emoji, this.x, this.y);
+        ctx.globalAlpha = 1.0;
+      }
+    }
+
+    function update() {
+      animationId = requestAnimationFrame(update);
+      analyser.getByteTimeDomainData(dataArray);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      let maxAmp = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        let amp = Math.abs(dataArray[i] - 128);
+        if (amp > maxAmp) maxAmp = amp;
+      }
+
+      // 判斷門檻：maxAmp > 25 開始噴發笑臉與增加能量
+      if (maxAmp > 25) {
+        // 聲音越強，每一幀產生笑臉的機率越高
+        if (Math.random() < 0.3) {
+          particles.push(new Particle(maxAmp));
+        }
+        
+        // 增加能量速度：0.6 是適中，可根據需求調整
+        energy += 0.6;
+        if (energy > targetEnergy) energy = targetEnergy;
+        progressBar.style.width = energy + "%";
+      }
+
+      // 更新並繪製粒子
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].draw();
+        // 移出螢幕或透明度歸零時刪除，節省資源
+        if (particles[i].y < -100 || particles[i].opacity <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+
+      // 進度文字回饋
+      if (energy > 0 && energy < 100) {
+        statusMsg.innerText = `集能中：${Math.floor(energy)}%`;
+      }
+
+      if (energy >= targetEnergy) {
+        cancelAnimationFrame(animationId);
+        setTimeout(() => {
+          successOverlay.style.display = 'flex';
+        }, 300);
+      }
+    }
+  </script>
+</body>
+</html>
